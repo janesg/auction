@@ -1,6 +1,7 @@
 package com.devxpress.auction.api.v1.mapper;
 
 import com.devxpress.auction.api.v1.model.Bid;
+import com.devxpress.auction.api.v1.model.BidDetail;
 import com.devxpress.auction.entity.BidEntity;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
@@ -17,7 +18,7 @@ public interface BidMapper {
     @Mappings({
             @Mapping(source = "submittedAt", target = "createdDateTime")
     })
-    Bid bidEntityToBid(BidEntity bidEntity);
+    BidDetail bidEntityToBidDetail(BidEntity bidEntity);
 
     BidEntity bidToBidEntity(Bid bid);
 

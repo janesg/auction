@@ -1,17 +1,18 @@
 package com.devxpress.auction.service;
 
 import com.devxpress.auction.api.v1.model.Bid;
+import com.devxpress.auction.api.v1.model.BidDetail;
 
 import java.util.List;
 
 public interface BidService {
 
-    List<Bid> getAllBids();
+    List<BidDetail> getAllBids();
 
-    List<Bid> getBidsForItem(long itemId);
+    List<BidDetail> getBidsForItem(long itemId);
 
-    List<Bid> getBidsForUser(String userId);
+    List<BidDetail> getBidsForUser(String userId);
 
-    Bid createBid(Bid bid);
+    BidDetail createBid(Bid bid);
 
 }

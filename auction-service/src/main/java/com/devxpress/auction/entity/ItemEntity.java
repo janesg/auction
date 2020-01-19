@@ -13,4 +13,7 @@ public class ItemEntity {
 
     private String category;
 
+    // TODO : as an auction item we should also include a timestamp
+    //        representing when the auction for the item finishes
+
 }
