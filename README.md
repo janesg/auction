@@ -12,7 +12,7 @@ Provide a bid tracker interface and concrete implementation with the following f
 - Get all the bids for an item
 - Get all the items on which a user has bid
 
-## Build
+## Build & Unit Tests
 ```sh
 $ git clone https://github.com/janesg/auction.git
 $ cd auction/auction-service
