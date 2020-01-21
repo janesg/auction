@@ -51,9 +51,7 @@ public class AuctionController {
 
     static final String EMPTY_ITEM_ID = "Item id must be specified";
     static final String INVALID_ITEM_ID_FORMAT = "Item id : %s, does not conform to the required format";
-    static final String INVALID_ITEM_ID = "Item id : %s, is invalid";
     static final String ITEM_ID_MISMATCH = "Item id mismatch between request path and body";
-    static final String ITEM_NOT_EXIST = "Item id : %s, does not relate to an existing item";
     static final String WINNING_BID_NOT_FOUND = "No winning bid for item id : %s";
     static final String BID_CREATION_FAILED = "Failed to create bid : ";
     static final String EMPTY_USER_ID = "User id must be specified";
@@ -82,7 +80,7 @@ public class AuctionController {
             @RequestParam(value = "bid-user-id", required = false) String bidUserId) {
 
         log.info(bidUserId == null ? "Retrieving all auction items" :
-                 String.format("Retrieving auctions items on which user : %s, has bid", bidUserId));
+                 String.format("Retrieving auction item(s) on which user : %s, has bid", bidUserId));
 
         try {
             Set<Item> items;
@@ -101,7 +99,7 @@ public class AuctionController {
         } catch (Exception e) {
             String msg = (bidUserId == null ?
                     String.format("Failed to retrieve all auction items - %s", getMessage(e)) :
-                    String.format("Failed to retrieve auctions items on which user : %s, has bid - %s",
+                    String.format("Failed to retrieve auction item(s) on which user : %s, has bid - %s",
                             bidUserId, getMessage(e)));
             log.error(msg);
             throw new BaseException(msg, UNEXPECTED_ERROR);
@@ -118,7 +116,7 @@ public class AuctionController {
     @ApiResponses(value = {
             @ApiResponse(code = 200, message = "Successful retrieval of item bids",
                     response = BidDetail.class, responseContainer = "List"),
-            @ApiResponse(code = 422, message = INVALID_RESOURCE_MSG, response = ApiError.class),
+            @ApiResponse(code = 404, message = RESOURCE_NOT_FOUND_MSG, response = ApiError.class),
             @ApiResponse(code = 500, message = SYSTEM_ERROR_MSG, response = ApiError.class)
     })
     public ResponseEntity<List<BidDetail>> getAllBidsForItem(
@@ -130,20 +128,16 @@ public class AuctionController {
 
         log.info(String.format("Retrieving all bids on auction item with id : %s", itemId));
 
-        if (!isValidItemId(itemId)) {
-            String msg = String.format(INVALID_ITEM_ID, itemId);
-            log.error(msg);
-            throw new InvalidResourceException(msg);
-        }
+        Item item = itemService.getItem(itemId);
 
         try {
             List<BidDetail> bids = bidService.getBidsForItem(itemId);
-            bids.forEach(b -> b.setItemDescription(itemService.getItem(b.getItemId()).getDescription()));
+            bids.forEach(b -> b.setItemDescription(item.getDescription()));
 
-            log.info(String.format("Retrieved %s bids on auction item with id : %s", bids.size(), itemId));
+            log.info(String.format("Retrieved %s bid(s) on auction item with id : %s", bids.size(), itemId));
             return new ResponseEntity<>(bids, HttpStatus.OK);
         } catch (Exception e) {
-            String msg = String.format("Failed to retrieve bids on auction item with id : %s - %s",
+            String msg = String.format("Failed to retrieve bid(s) on auction item with id : %s - %s",
                             itemId, getMessage(e));
             log.error(msg);
             throw new BaseException(msg, UNEXPECTED_ERROR);
@@ -171,24 +165,22 @@ public class AuctionController {
 
         log.info(String.format("Retrieving winning bid on auction item with id : %s", itemId));
 
-        if (!isValidItemId(itemId)) {
-            String msg = String.format(INVALID_ITEM_ID, itemId);
-            log.error(msg);
-            throw new InvalidResourceException(msg);
-        }
+        Item item = itemService.getItem(itemId);
 
         try {
-            // Note: as the stream is ordered (such as the streams you get from an array or List),
-            //       the first element that is maximal is returned in the event of multiple maximal elements
+            // Note: as the stream is ordered (...since it's ultimately sourced from a List),
+            //       in the case where there are multiple bids of the maximum amount, then the winning
+            //       bid returned is the first element in the stream matching that maximum amount
+            //
+            //       For an auction, this is what's required since the winner should be the user
+            //       who first submitted a bid for the winning amount
 
-            // TODO : rather than return first maximal element, we should perhaps
-            //        return the bid that was submitted first !
             BidDetail winningBid = bidService.getBidsForItem(itemId).stream()
                     .max(Comparator.comparing(BidDetail::getAmount))
                     .orElseThrow(() -> new ResourceNotFoundException(
                             String.format(WINNING_BID_NOT_FOUND, itemId)));
 
-            winningBid.setItemDescription(itemService.getItem(winningBid.getItemId()).getDescription());
+            winningBid.setItemDescription(item.getDescription());
 
             log.info(String.format("Retrieved winning bid on auction item with id : %s", itemId));
             return new ResponseEntity<>(winningBid, HttpStatus.OK);
@@ -227,6 +219,8 @@ public class AuctionController {
             throw new IllegalArgumentException(ITEM_ID_MISMATCH);
         }
 
+        Item item = itemService.getItem(itemId);
+
         List<String> errors = validateBid(bid);
 
         if (!errors.isEmpty()) {
@@ -240,8 +234,7 @@ public class AuctionController {
 
         try {
             BidDetail createdBidDetail = bidService.createBid(bid);
-            createdBidDetail.setItemDescription(
-                    itemService.getItem(createdBidDetail.getItemId()).getDescription());
+            createdBidDetail.setItemDescription(item.getDescription());
 
             log.info("Created a new bid on item : {}, for user : {}",
                     createdBidDetail.getItemId(), createdBidDetail.getUserId());
@@ -257,22 +250,12 @@ public class AuctionController {
     private List<String> validateBid(Bid bid) {
         List<String> errors = new ArrayList<>();
 
-        if (bid.getItemId() == null) {
-            errors.add(EMPTY_ITEM_ID);
-        } else {
-            try {
-                itemService.getItem(bid.getItemId());
-            } catch (ResourceNotFoundException e) {
-                errors.add(String.format(ITEM_NOT_EXIST, bid.getItemId()));
-            }
+        // TODO : if each item were to have a timestamp indicating
+        //        when the auction on that item finishes we can validate
+        //        whether or not the bid relates to an item for which the
+        //        auction has already ended
 
-            // TODO : if each item were to have a timestamp indicating
-            //        when the auction on that item finishes we can
-            //        validate whether the bid is for an item for which the
-            //        auction has already ended
-        }
-
-        if (bid.getUserId() == null) {
+        if (bid.getUserId() == null || bid.getUserId().trim().length() == 0) {
             errors.add(EMPTY_USER_ID);
         }
 
@@ -281,20 +264,12 @@ public class AuctionController {
         } else if (bid.getAmount().compareTo(BigDecimal.ZERO) <= 0) {
             errors.add(INVALID_AMOUNT);
         } else {
+
             // TODO : Check that the amount bid is higher than any previous
-            //        bid made on same item by same user
+            //        bid made on the same item by the same user
         }
 
         return errors;
     }
 
-    private boolean isValidItemId(Long itemId) {
-        try {
-            itemService.getItem(itemId);
-        } catch (ResourceNotFoundException e) {
-            return false;
-        }
-
-        return true;
-    }
 }

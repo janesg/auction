@@ -15,11 +15,11 @@ import java.util.stream.Collectors;
 @Component
 public class BidRepositoryImpl implements BidRepository {
 
-    private final Map<String, List<BidEntity>> USER_BID_MAP = new ConcurrentHashMap<>();
+    private final Map<Long, List<BidEntity>> ITEM_BID_MAP = new ConcurrentHashMap<>();
 
     @Override
     public Iterable<BidEntity> findAll() {
-        return USER_BID_MAP.values()
+        return ITEM_BID_MAP.values()
                 .stream()
                 .flatMap(Collection::stream)
                 .collect(Collectors.toList());
@@ -27,21 +27,21 @@ public class BidRepositoryImpl implements BidRepository {
 
     @Override
     public Iterable<BidEntity> findByItemId(long itemId) {
-        return USER_BID_MAP.values()
-                .stream()
-                .flatMap(Collection::stream)
-                .filter(bid -> bid.getItemId().equals(itemId))
-                .collect(Collectors.toList());
+        return new ArrayList<>(ITEM_BID_MAP.getOrDefault(itemId, Collections.emptyList()));
     }
 
     @Override
     public Iterable<BidEntity> findByUserId(String userId) {
-        return new ArrayList<>(USER_BID_MAP.getOrDefault(userId, Collections.emptyList()));
+        return ITEM_BID_MAP.values()
+                .stream()
+                .flatMap(Collection::stream)
+                .filter(bid -> bid.getUserId().equals(userId))
+                .collect(Collectors.toList());
     }
 
     @Override
     public BidEntity save(BidEntity bid) {
-        USER_BID_MAP.compute(bid.getUserId(),
+        ITEM_BID_MAP.compute(bid.getItemId(),
                 (k, v) -> {
                     List<BidEntity> vals = v;
 
