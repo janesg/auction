@@ -1,5 +1,6 @@
 package com.devxpress.auction.service;
 
+import com.devxpress.auction.api.exception.InvalidResourceException;
 import com.devxpress.auction.api.v1.mapper.BidMapper;
 import com.devxpress.auction.api.v1.mapper.BidMapperImpl;
 import com.devxpress.auction.api.v1.model.Bid;
@@ -18,6 +19,7 @@ import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 import static org.hamcrest.CoreMatchers.allOf;
 import static org.hamcrest.CoreMatchers.hasItem;
@@ -27,6 +29,7 @@ import static org.hamcrest.CoreMatchers.nullValue;
 import static org.hamcrest.Matchers.greaterThanOrEqualTo;
 import static org.hamcrest.Matchers.hasProperty;
 import static org.junit.Assert.assertThat;
+import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.spy;
@@ -54,9 +57,9 @@ public class BidServiceImplTest {
         LocalDateTime now = LocalDateTime.now();
 
         spyBidRepository.save(createTestBidEntity(1L, "bob", new BigDecimal("12.00"), null));
-        spyBidRepository.save(createTestBidEntity(1L, "alice", new BigDecimal("10.00"), null));
-        spyBidRepository.save(createTestBidEntity(3L, "alice", new BigDecimal("15.00"), null));
-        spyBidRepository.save(createTestBidEntity(1L, "alice", new BigDecimal("11.00"), null));
+        spyBidRepository.save(createTestBidEntity(1L, "alice", new BigDecimal("12.50"), null));
+        spyBidRepository.save(createTestBidEntity(3L, "alice", new BigDecimal("10.00"), null));
+        spyBidRepository.save(createTestBidEntity(1L, "bob", new BigDecimal("16.00"), null));
 
         List<BidDetail> bids = bidService.getAllBids();
 
@@ -74,21 +77,21 @@ public class BidServiceImplTest {
         bidMatchers2.add(hasProperty("itemId", is(1L)));
         bidMatchers2.add(hasProperty("itemDescription", nullValue()));
         bidMatchers2.add(hasProperty("userId", is("alice")));
-        bidMatchers2.add(hasProperty("amount", is(new BigDecimal("10.00"))));
+        bidMatchers2.add(hasProperty("amount", is(new BigDecimal("12.50"))));
         bidMatchers2.add(hasProperty("createdDateTime", greaterThanOrEqualTo(now)));
 
         List<Matcher<? super BidDetail>> bidMatchers3 = new ArrayList<>();
         bidMatchers3.add(hasProperty("itemId", is(3L)));
         bidMatchers3.add(hasProperty("itemDescription", nullValue()));
         bidMatchers3.add(hasProperty("userId", is("alice")));
-        bidMatchers3.add(hasProperty("amount", is(new BigDecimal("15.00"))));
+        bidMatchers3.add(hasProperty("amount", is(new BigDecimal("10.00"))));
         bidMatchers3.add(hasProperty("createdDateTime", greaterThanOrEqualTo(now)));
 
         List<Matcher<? super BidDetail>> bidMatchers4 = new ArrayList<>();
         bidMatchers4.add(hasProperty("itemId", is(1L)));
         bidMatchers4.add(hasProperty("itemDescription", nullValue()));
-        bidMatchers4.add(hasProperty("userId", is("alice")));
-        bidMatchers4.add(hasProperty("amount", is(new BigDecimal("11.00"))));
+        bidMatchers4.add(hasProperty("userId", is("bob")));
+        bidMatchers4.add(hasProperty("amount", is(new BigDecimal("16.00"))));
         bidMatchers4.add(hasProperty("createdDateTime", greaterThanOrEqualTo(now)));
 
         assertThat(bids, allOf(
@@ -105,9 +108,9 @@ public class BidServiceImplTest {
         LocalDateTime now = LocalDateTime.now();
 
         spyBidRepository.save(createTestBidEntity(1L, "bob", new BigDecimal("12.00"), null));
-        spyBidRepository.save(createTestBidEntity(1L, "alice", new BigDecimal("10.00"), null));
-        spyBidRepository.save(createTestBidEntity(3L, "alice", new BigDecimal("15.00"), null));
-        spyBidRepository.save(createTestBidEntity(1L, "alice", new BigDecimal("11.00"), null));
+        spyBidRepository.save(createTestBidEntity(1L, "alice", new BigDecimal("12.50"), null));
+        spyBidRepository.save(createTestBidEntity(3L, "alice", new BigDecimal("10.00"), null));
+        spyBidRepository.save(createTestBidEntity(1L, "bob", new BigDecimal("16.00"), null));
 
         List<BidDetail> bids = bidService.getBidsForItem(1L);
 
@@ -125,14 +128,14 @@ public class BidServiceImplTest {
         bidMatchers2.add(hasProperty("itemId", is(1L)));
         bidMatchers2.add(hasProperty("itemDescription", nullValue()));
         bidMatchers2.add(hasProperty("userId", is("alice")));
-        bidMatchers2.add(hasProperty("amount", is(new BigDecimal("10.00"))));
+        bidMatchers2.add(hasProperty("amount", is(new BigDecimal("12.50"))));
         bidMatchers2.add(hasProperty("createdDateTime", greaterThanOrEqualTo(now)));
 
         List<Matcher<? super BidDetail>> bidMatchers3 = new ArrayList<>();
         bidMatchers3.add(hasProperty("itemId", is(1L)));
         bidMatchers3.add(hasProperty("itemDescription", nullValue()));
-        bidMatchers3.add(hasProperty("userId", is("alice")));
-        bidMatchers3.add(hasProperty("amount", is(new BigDecimal("11.00"))));
+        bidMatchers3.add(hasProperty("userId", is("bob")));
+        bidMatchers3.add(hasProperty("amount", is(new BigDecimal("16.00"))));
         bidMatchers3.add(hasProperty("createdDateTime", greaterThanOrEqualTo(now)));
 
         assertThat(bids, allOf(
@@ -143,44 +146,67 @@ public class BidServiceImplTest {
     }
 
     @Test
+    public void getWinningBidForItem() {
+
+        LocalDateTime now = LocalDateTime.now();
+
+        spyBidRepository.save(createTestBidEntity(1L, "bob", new BigDecimal("12.00"), null));
+        spyBidRepository.save(createTestBidEntity(1L, "alice", new BigDecimal("12.50"), null));
+        spyBidRepository.save(createTestBidEntity(3L, "alice", new BigDecimal("10.00"), null));
+        spyBidRepository.save(createTestBidEntity(1L, "bob", new BigDecimal("16.00"), null));
+
+        Optional<BidDetail> winningBidOpt = bidService.getWinningBidForItem(1L);
+
+        assertThat(winningBidOpt.isPresent(), is(true));
+
+        BidDetail winningBid = winningBidOpt.get();
+
+        assertThat(winningBid.getItemId(), is(1L));
+        assertThat(winningBid.getItemDescription(), nullValue());
+        assertThat(winningBid.getUserId(), is("bob"));
+        assertThat(winningBid.getAmount(), is(new BigDecimal("16.00")));
+        assertThat(winningBid.getCreatedDateTime(), greaterThanOrEqualTo(now));
+    }
+
+    @Test
+    public void getWinningBidForItemNoBids() {
+
+        Optional<BidDetail> winningBidOpt = bidService.getWinningBidForItem(1L);
+
+        assertThat(winningBidOpt.isPresent(), is(false));
+    }
+
+    @Test
     public void getBidsForUser() {
         LocalDateTime now = LocalDateTime.now();
 
         spyBidRepository.save(createTestBidEntity(1L, "bob", new BigDecimal("12.00"), null));
-        spyBidRepository.save(createTestBidEntity(1L, "alice", new BigDecimal("10.00"), null));
-        spyBidRepository.save(createTestBidEntity(3L, "alice", new BigDecimal("15.00"), null));
-        spyBidRepository.save(createTestBidEntity(1L, "alice", new BigDecimal("11.00"), null));
+        spyBidRepository.save(createTestBidEntity(1L, "alice", new BigDecimal("12.50"), null));
+        spyBidRepository.save(createTestBidEntity(3L, "alice", new BigDecimal("10.00"), null));
+        spyBidRepository.save(createTestBidEntity(1L, "bob", new BigDecimal("16.00"), null));
 
         List<BidDetail> bids = bidService.getBidsForUser("alice");
 
         assertThat(bids, notNullValue());
-        assertThat(bids.size(), is(3));
+        assertThat(bids.size(), is(2));
 
         List<Matcher<? super BidDetail>> bidMatchers1 = new ArrayList<>();
         bidMatchers1.add(hasProperty("itemId", is(1L)));
         bidMatchers1.add(hasProperty("itemDescription", nullValue()));
         bidMatchers1.add(hasProperty("userId", is("alice")));
-        bidMatchers1.add(hasProperty("amount", is(new BigDecimal("10.00"))));
+        bidMatchers1.add(hasProperty("amount", is(new BigDecimal("12.50"))));
         bidMatchers1.add(hasProperty("createdDateTime", greaterThanOrEqualTo(now)));
 
         List<Matcher<? super BidDetail>> bidMatchers2 = new ArrayList<>();
         bidMatchers2.add(hasProperty("itemId", is(3L)));
         bidMatchers2.add(hasProperty("itemDescription", nullValue()));
         bidMatchers2.add(hasProperty("userId", is("alice")));
-        bidMatchers2.add(hasProperty("amount", is(new BigDecimal("15.00"))));
+        bidMatchers2.add(hasProperty("amount", is(new BigDecimal("10.00"))));
         bidMatchers2.add(hasProperty("createdDateTime", greaterThanOrEqualTo(now)));
-
-        List<Matcher<? super BidDetail>> bidMatchers3 = new ArrayList<>();
-        bidMatchers3.add(hasProperty("itemId", is(1L)));
-        bidMatchers3.add(hasProperty("itemDescription", nullValue()));
-        bidMatchers3.add(hasProperty("userId", is("alice")));
-        bidMatchers3.add(hasProperty("amount", is(new BigDecimal("11.00"))));
-        bidMatchers3.add(hasProperty("createdDateTime", greaterThanOrEqualTo(now)));
 
         assertThat(bids, allOf(
                 hasItem(allOf(bidMatchers1)),
-                hasItem(allOf(bidMatchers2)),
-                hasItem(allOf(bidMatchers3))
+                hasItem(allOf(bidMatchers2))
         ));
     }
 
@@ -209,6 +235,44 @@ public class BidServiceImplTest {
         verifyNoMoreInteractions(spyBidRepository);
 
         assertThat(jpaCaptor.getValue(), is(saveBid));
+    }
+
+    @Test
+    public void createBidInvalidAmount() {
+
+        LocalDateTime now = LocalDateTime.now();
+
+        spyBidRepository.save(createTestBidEntity(1L, "bob", new BigDecimal("12.00"), null));
+
+        List<BidDetail> bids = bidService.getBidsForItem(1L);
+
+        assertThat(bids, notNullValue());
+        assertThat(bids.size(), is(1));
+
+        List<Matcher<? super BidDetail>> bidMatchers = new ArrayList<>();
+        bidMatchers.add(hasProperty("itemId", is(1L)));
+        bidMatchers.add(hasProperty("itemDescription", nullValue()));
+        bidMatchers.add(hasProperty("userId", is("bob")));
+        bidMatchers.add(hasProperty("amount", is(new BigDecimal("12.00"))));
+        bidMatchers.add(hasProperty("createdDateTime", greaterThanOrEqualTo(now)));
+
+        assertThat(bids, hasItem(allOf(bidMatchers)));
+
+        try {
+            spyBidRepository.save(createTestBidEntity(1L, "alice", new BigDecimal("12.00"), null));
+            fail("InvalidResourceException expected to be thrown but wasn't");
+        } catch(InvalidResourceException e) {
+            assertThat(e.getMessage(), is("Invalid bid on item : 1, for user : alice"));
+            assertThat(e.getReasons().size(), is(1));
+            assertThat(e.getReasons().contains("Amount bid must be greater than current highest"), is(true));
+        }
+
+        bids = bidService.getBidsForItem(1L);
+
+        assertThat(bids, notNullValue());
+        assertThat(bids.size(), is(1));
+
+        assertThat(bids, hasItem(allOf(bidMatchers)));
     }
 
     private Bid createTestBid(long id, String user, BigDecimal amount) {

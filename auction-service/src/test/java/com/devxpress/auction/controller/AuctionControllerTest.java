@@ -1,5 +1,6 @@
 package com.devxpress.auction.controller;
 
+import com.devxpress.auction.api.exception.InvalidResourceException;
 import com.devxpress.auction.api.exception.ResourceNotFoundException;
 import com.devxpress.auction.api.v1.model.Bid;
 import com.devxpress.auction.api.v1.model.BidDetail;
@@ -25,6 +26,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 
 import static com.devxpress.auction.api.ApiErrorCode.UNEXPECTED_ERROR;
@@ -329,14 +331,9 @@ public class AuctionControllerTest {
 
         LocalDateTime now = LocalDateTime.now();
 
-        List<BidDetail> bidDetails = new ArrayList<>();
-        bidDetails.add(createTestBidDetail(itemId, null, "bob", new BigDecimal("20.25"), now));
-        bidDetails.add(createTestBidDetail(itemId, null, "alice", new BigDecimal("25.50"), now));
-        bidDetails.add(createTestBidDetail(itemId, null, "bob", new BigDecimal("30.75"), now));
-        bidDetails.add(createTestBidDetail(itemId, null, "alice", new BigDecimal("28.50"), now));
-
         when(itemService.getItem(itemId)).thenReturn(createTestItem(itemId, "Description " + itemId));
-        when(bidService.getBidsForItem(itemId)).thenReturn(bidDetails);
+        when(bidService.getWinningBidForItem(itemId)).thenReturn(
+                Optional.of(createTestBidDetail(itemId, null, "bob", new BigDecimal("30.75"), now)));
 
         mockMvc.perform(get(BASE_ITEMS_URI + "/{item-id}/bids/winning", itemId)
                 .contentType(MediaType.APPLICATION_JSON)
@@ -348,38 +345,7 @@ public class AuctionControllerTest {
                 .andExpect(jsonPath("$.amount", is(30.75)))
                 .andExpect(jsonPath("$.createdDateTime", startsWith(now.format(DateTimeFormatter.ISO_DATE_TIME))));
 
-        verify(bidService).getBidsForItem(itemId);
-        verify(itemService).getItem(itemId);
-    }
-
-    @Test
-    public void getWinningBidForItemWhenMultipleMaxBids() throws Exception {
-
-        long itemId = 3L;
-
-        LocalDateTime now = LocalDateTime.now();
-
-        List<BidDetail> bidDetails = new ArrayList<>();
-        bidDetails.add(createTestBidDetail(itemId, null, "bob", new BigDecimal("20.25"), now));
-        bidDetails.add(createTestBidDetail(itemId, null, "alice", new BigDecimal("25.50"), now));
-        bidDetails.add(createTestBidDetail(itemId, null, "bob", new BigDecimal("30.75"), now));
-        bidDetails.add(createTestBidDetail(itemId, null, "alice", new BigDecimal("28.50"), now));
-        bidDetails.add(createTestBidDetail(itemId, null, "alice", new BigDecimal("30.75"), now));
-
-        when(itemService.getItem(itemId)).thenReturn(createTestItem(itemId, "Description " + itemId));
-        when(bidService.getBidsForItem(itemId)).thenReturn(bidDetails);
-
-        mockMvc.perform(get(BASE_ITEMS_URI + "/{item-id}/bids/winning", itemId)
-                .contentType(MediaType.APPLICATION_JSON)
-                .accept(MediaType.APPLICATION_JSON))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.itemId", is((int) itemId)))
-                .andExpect(jsonPath("$.itemDescription", is("Description " + itemId)))
-                .andExpect(jsonPath("$.userId", is("bob")))
-                .andExpect(jsonPath("$.amount", is(30.75)))
-                .andExpect(jsonPath("$.createdDateTime", startsWith(now.format(DateTimeFormatter.ISO_DATE_TIME))));
-
-        verify(bidService).getBidsForItem(itemId);
+        verify(bidService).getWinningBidForItem(itemId);
         verify(itemService).getItem(itemId);
     }
 
@@ -388,10 +354,8 @@ public class AuctionControllerTest {
 
         long itemId = 3L;
 
-        List<BidDetail> bidDetails = new ArrayList<>();
-
         when(itemService.getItem(itemId)).thenReturn(createTestItem(itemId, "Description " + itemId));
-        when(bidService.getBidsForItem(itemId)).thenReturn(bidDetails);
+        when(bidService.getWinningBidForItem(itemId)).thenReturn(Optional.empty());
 
         mockMvc.perform(get(BASE_ITEMS_URI + "/{item-id}/bids/winning", itemId)
                 .contentType(MediaType.APPLICATION_JSON)
@@ -406,7 +370,7 @@ public class AuctionControllerTest {
                 .andExpect(jsonPath("$.contextDetails", hasSize(1)))
                 .andExpect(jsonPath("$.contextDetails[0]", is(String.format(WINNING_BID_NOT_FOUND, itemId))));
 
-        verify(bidService).getBidsForItem(itemId);
+        verify(bidService).getWinningBidForItem(itemId);
         verify(itemService).getItem(itemId);
     }
 
@@ -462,7 +426,7 @@ public class AuctionControllerTest {
         long itemId = 3L;
 
         when(itemService.getItem(itemId)).thenReturn(createTestItem(itemId, "Description " + itemId));
-        when(bidService.getBidsForItem(itemId)).thenThrow(new RuntimeException("Something's wrong"));
+        when(bidService.getWinningBidForItem(itemId)).thenThrow(new RuntimeException("Something's wrong"));
 
         mockMvc.perform(get(BASE_ITEMS_URI + "/{item-id}/bids/winning", itemId)
                 .contentType(MediaType.APPLICATION_JSON)
@@ -478,7 +442,7 @@ public class AuctionControllerTest {
                 .andExpect(jsonPath("$.contextDetails[0]",
                         is("Failed to retrieve winning bid on auction item with id : 3 - Something's wrong")));
 
-        verify(bidService).getBidsForItem(itemId);
+        verify(bidService).getWinningBidForItem(itemId);
         verify(itemService).getItem(itemId);
     }
 
@@ -671,6 +635,41 @@ public class AuctionControllerTest {
                 .andExpect(jsonPath("$.contextDetails[0]", is(INVALID_AMOUNT)));
 
         verify(bidService, never()).getBidsForItem(itemId);
+        verify(itemService).getItem(itemId);
+    }
+
+    @Test
+    public void failCreateBidInvalidBidAmount() throws Exception {
+
+        long itemId = 999L;
+        String userId = "bob";
+        BigDecimal amount = new BigDecimal("35.58");
+
+        Bid dto = createTestBid(itemId, userId, amount);
+
+        String msg = String.format(
+                "Invalid bid on item : %s, for user : %s", dto.getItemId(), dto.getUserId());
+        InvalidResourceException ire = new InvalidResourceException(msg);
+        ire.addReason("Amount bid must be greater than current highest");
+
+        when(itemService.getItem(itemId)).thenReturn(createTestItem(itemId, "Description " + itemId));
+        when(bidService.createBid(any(Bid.class))).thenThrow(ire);
+
+        mockMvc.perform(post(BASE_ITEMS_URI + "/{item-id}/bids", itemId)
+                .content(mapToJson(dto))
+                .contentType(MediaType.APPLICATION_JSON)
+                .accept(MediaType.APPLICATION_JSON))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.status", is(HttpStatus.UNPROCESSABLE_ENTITY.name())))
+                .andExpect(jsonPath("$.statusCode", is(HttpStatus.UNPROCESSABLE_ENTITY.value())))
+                .andExpect(jsonPath("$.code", is(nullValue())))
+                .andExpect(jsonPath("$.message", is(INVALID_RESOURCE_MSG)))
+                .andExpect(jsonPath("$.isoDateTime", startsWith(LocalDate.now(ZoneOffset.UTC).toString() + "T")))
+                .andExpect(jsonPath("$.isoDateTime", endsWith("Z")))
+                .andExpect(jsonPath("$.contextDetails", hasSize(1)))
+                .andExpect(jsonPath("$.contextDetails[0]", is("Amount bid must be greater than current highest")));
+
+        verify(bidService).createBid(any(Bid.class));
         verify(itemService).getItem(itemId);
     }
 

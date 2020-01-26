@@ -30,7 +30,6 @@ import org.springframework.web.bind.annotation.RestController;
 import javax.validation.Valid;
 import java.math.BigDecimal;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
@@ -168,15 +167,7 @@ public class AuctionController {
         Item item = itemService.getItem(itemId);
 
         try {
-            // Note: as the stream is ordered (...since it's ultimately sourced from a List),
-            //       in the case where there are multiple bids of the maximum amount, then the winning
-            //       bid returned is the first element in the stream matching that maximum amount
-            //
-            //       For an auction, this is what's required since the winner should be the user
-            //       who first submitted a bid for the winning amount
-
-            BidDetail winningBid = bidService.getBidsForItem(itemId).stream()
-                    .max(Comparator.comparing(BidDetail::getAmount))
+            BidDetail winningBid = bidService.getWinningBidForItem(itemId)
                     .orElseThrow(() -> new ResourceNotFoundException(
                             String.format(WINNING_BID_NOT_FOUND, itemId)));
 
@@ -240,6 +231,9 @@ public class AuctionController {
                     createdBidDetail.getItemId(), createdBidDetail.getUserId());
 
             return new ResponseEntity<>(createdBidDetail, HttpStatus.CREATED);
+        } catch (InvalidResourceException e) {
+            log.error(getMessage(e));
+            throw e;
         } catch (Exception e) {
             String msg = BID_CREATION_FAILED + getMessage(e);
             log.error(msg);
@@ -263,10 +257,6 @@ public class AuctionController {
             errors.add(EMPTY_AMOUNT);
         } else if (bid.getAmount().compareTo(BigDecimal.ZERO) <= 0) {
             errors.add(INVALID_AMOUNT);
-        } else {
-
-            // TODO : Check that the amount bid is higher than any previous
-            //        bid made on the same item by the same user
         }
 
         return errors;

@@ -9,6 +9,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.stream.Collectors;
 import java.util.stream.StreamSupport;
 
@@ -39,6 +40,16 @@ public class BidServiceImpl implements BidService {
                 .stream(bids.spliterator(), false)
                 .map(bidMapper::bidEntityToBidDetail)
                 .collect(Collectors.toList());
+    }
+
+    @Override
+    public Optional<BidDetail> getWinningBidForItem(long itemId) {
+        Iterable<BidEntity> bids = bidRepository.findByItemId(itemId);
+
+        return StreamSupport
+                .stream(bids.spliterator(), false)
+                .findFirst()
+                .map(bidMapper::bidEntityToBidDetail);
     }
 
     @Override
