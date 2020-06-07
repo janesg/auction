@@ -10,6 +10,7 @@ import org.mapstruct.ReportingPolicy;
 
 import java.time.Instant;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.time.ZoneOffset;
 
 @Mapper(unmappedTargetPolicy = ReportingPolicy.IGNORE, componentModel = "spring")
@@ -23,6 +24,6 @@ public interface BidMapper {
     BidEntity bidToBidEntity(Bid bid);
 
     default LocalDateTime instantToLocalDateTime(Instant instant) {
-        return LocalDateTime.ofInstant(instant, ZoneOffset.UTC);
+        return LocalDateTime.ofInstant(instant, ZoneId.systemDefault());
     }
 }
